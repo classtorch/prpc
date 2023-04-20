@@ -9,7 +9,7 @@ Translations: [English](README.md) | [简体中文](README_zh.md)
 
 ```
 安装：
-go install https://github.com/classtorch/prpc/cmd/protoc-gen-go-prpc
+go install github.com/classtorch/prpc/cmd/protoc-gen-go-prpc
 
 使用：
 protoc --go-prpc_out=:. --go_out=.  -I . api/user.proto
