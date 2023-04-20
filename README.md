@@ -4,6 +4,9 @@
 
 pRPC is a http and grpc protocol client library driven by protobuf, and supports service discovery and load balancing
 
+## Architecture
+![image](https://github.com/classtorch/prpc/blob/master/prpc.png)
+
 ## Goals
 
 Reduce the code workload of the interface in the process of switching between http and grpc protocols, and try to make users insensitive to the protocol at the code layer
