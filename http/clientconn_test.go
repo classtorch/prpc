@@ -13,7 +13,7 @@ import (
 type mockResolverBuilder struct {
 }
 
-var services = []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}
+var services = []string{"127.0.0.1:33000", "127.0.0.2:33000", "127.0.0.3:33000"}
 
 func (resolverBuilder mockResolverBuilder) Build(target resolver.Target, cc resolver.ClientConn) (resolver.Resolver, error) {
 	addresses := make([]resolver.Address, len(services))
