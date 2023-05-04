@@ -2,14 +2,14 @@ Translations: [English](README.md) | [简体中文](README_zh.md)
 
 # pRPC
 
-pRPC是一个由protoBuffer文件驱动的http和grpc协议客户端库，并支持服务发现和负载均衡 
+pRPC是一个由protoBuffer文件驱动的golang http和grpc协议客户端库，并支持服务发现和负载均衡 
 
 ## 架构图
 ![image](https://github.com/classtorch/prpc/blob/master/prpc.png)
 
 ## 目标
 
-减少接口在http和grpc协议切换过程中代码工作量，尽量让使用者在代码层对协议无感
+统一http和grpc调用，减少接口在http和grpc协议切换过程中代码工作量，尽量让使用者在代码层对协议无感
 
 ## 原则
 
