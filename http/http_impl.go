@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/google/go-querystring/query"
+	"github.com/classtorch/prpc/pkg/query"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -40,12 +40,15 @@ func NewDefaultPRpcHttpClient() CallInterface {
 }
 
 func (cc *defaultHttpClient) Get(ctx context.Context, addr string, api string, req interface{}, reply interface{}, opts ...CallOption) (*http.Request, *http.Response, error) {
-	values, err := query.Values(req)
+	values, err := query.Values(req, "json")
 	if err != nil {
 		return nil, nil, err
 	}
 	queryParams := values.Encode()
-	url := addr + api + "?" + queryParams
+	url := addr + api
+	if len(queryParams) > 0 {
+		url = addr + api + "?" + queryParams
+	}
 	request, err := getRequest(ctx, url, http.MethodGet, nil, opts...)
 	if err != nil {
 		return nil, nil, err
@@ -125,6 +128,7 @@ func getPostFormParams(req interface{}) (url.Values, error) {
 	for i := 0; i < n; i++ {
 		field := valType.Field(i)
 		val := value.Field(i)
+
 		tagValue := field.Tag.Get("json")
 		if len(tagValue) > 0 {
 			tagValues := strings.Split(tagValue, ",")

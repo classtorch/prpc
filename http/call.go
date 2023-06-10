@@ -22,9 +22,16 @@ func WithCallTimeOut(value int) CallOption {
 	}
 }
 
+func WithUrlParam(value string) CallOption {
+	return func(callOption *callOption) {
+		callOption.UrlParam = value
+	}
+}
+
 type callOption struct {
-	Header  map[string]string
-	TimeOut time.Duration
+	Header   map[string]string
+	TimeOut  time.Duration
+	UrlParam string // url param,if raw url is /users,url param='/123',then latest url is /users/123. the url param can be multiple，such as /123/001
 }
 
 type CallOptions []CallOption
@@ -69,6 +76,14 @@ func (opts CallOptions) GetHeader() map[string]string {
 	return callOpt.Header
 }
 
+func (opts CallOptions) GetUrlParam() string {
+	callOpt := &callOption{}
+	for _, opt := range opts {
+		opt(callOpt)
+	}
+	return callOpt.UrlParam
+}
+
 func (cc *ClientConn) Invoke(ctx context.Context, method string, api string, req interface{}, reply interface{}, opts ...CallOption) error {
 	addr := ""
 	var err error
@@ -110,6 +125,9 @@ func combineCallOptions(cc *ClientConn, option ...CallOption) []CallOption {
 	if callOpt.TimeOut != 0 {
 		options = append(options, WithCallTimeOut(int(callOpt.TimeOut/time.Second)))
 	}
+	if len(callOpt.UrlParam) > 0 {
+		options = append(options, WithUrlParam(callOpt.UrlParam))
+	}
 	return options
 }
 
@@ -119,6 +137,12 @@ func invoke(ctx context.Context, req interface{}, reply interface{}, httpRequest
 	api := httpRequest.URL.Path
 	method := strings.ToUpper(httpRequest.Method)
 	opts = combineCallOptions(cc, opts...)
+
+	urlParam := CallOptions(opts).GetUrlParam()
+	if len(urlParam) > 0 {
+		api = api + urlParam
+	}
+
 	var err error
 	switch method {
 	case http.MethodGet:
