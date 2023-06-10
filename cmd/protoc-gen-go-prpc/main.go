@@ -9,8 +9,9 @@ import (
 
 var showVersion = flag.Bool("version", false, "print the version and exit")
 var requireUnimplemented *bool
+var httpGenerateGrpc = flag.Bool("http_generate_grpc", true, "set whether http needs to generate grpc methods")
 
-const version = "v1.0.0"
+const version = "v1.0.1"
 
 func main() {
 	flag.Parse()
@@ -22,7 +23,7 @@ func main() {
 	requireUnimplemented = flags.Bool("require_unimplemented_servers", true, "set to false to match legacy behavior")
 
 	protogen.Options{
-		ParamFunc: flags.Set,
+		ParamFunc: flag.CommandLine.Set,
 	}.Run(func(gen *protogen.Plugin) error {
 		gen.SupportedFeatures = uint64(pluginpb.CodeGeneratorResponse_FEATURE_PROTO3_OPTIONAL)
 		for _, f := range gen.Files {

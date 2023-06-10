@@ -191,6 +191,9 @@ func genService(gen *protogen.Plugin, file *protogen.File, g *protogen.Generated
 			g.P(deprecationComment)
 		}
 		g.P(method.Comments.Leading, clientSignature(g, method))
+		if checkIsHttp(method) && *httpGenerateGrpc {
+			g.P(method.Comments.Leading, clientSignatureGrpc(g, method))
+		}
 	}
 	g.P("}")
 	g.P()
@@ -212,7 +215,9 @@ func genService(gen *protogen.Plugin, file *protogen.File, g *protogen.Generated
 	for _, method := range service.Methods {
 		if checkIsHttp(method) {
 			genHttpClientMethod(g, method)
-			continue
+			if httpGenerateGrpc == nil || !*httpGenerateGrpc {
+				continue
+			}
 		}
 		if !method.Desc.IsStreamingServer() && !method.Desc.IsStreamingClient() {
 			// Unary RPC method
@@ -310,7 +315,11 @@ func clientSignatureGrpc(g *protogen.GeneratedFile, method *protogen.Method) str
 }
 
 func clientSignatureHttp(g *protogen.GeneratedFile, method *protogen.Method) string {
-	return fmt.Sprintf("%s (ctx %s, in *%s, opts ...%s) (*%s,error)", method.GoName, g.QualifiedGoIdent(contextPackage.Ident("Context")), g.QualifiedGoIdent(method.Input.GoIdent), g.QualifiedGoIdent(prpcHttpPackage.Ident("CallOption")), g.QualifiedGoIdent(method.Output.GoIdent))
+	funcName := method.GoName
+	if checkIsHttp(method) && *httpGenerateGrpc {
+		funcName = "Http" + funcName
+	}
+	return fmt.Sprintf("%s (ctx %s, in *%s, opts ...%s) (*%s,error)", funcName, g.QualifiedGoIdent(contextPackage.Ident("Context")), g.QualifiedGoIdent(method.Input.GoIdent), g.QualifiedGoIdent(prpcHttpPackage.Ident("CallOption")), g.QualifiedGoIdent(method.Output.GoIdent))
 }
 
 func getHttpRule(method *protogen.Method) (string, string, map[string]string) {
