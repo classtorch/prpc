@@ -54,6 +54,9 @@ func (opts CallOptions) CombineHeader(header map[string]string) []CallOption {
 	if callOpt.TimeOut != 0 {
 		options = append(options, WithCallTimeOut(int(callOpt.TimeOut/time.Second)))
 	}
+	if len(callOpt.UrlParam) > 0 {
+		options = append(options, WithUrlParam(callOpt.UrlParam))
+	}
 	return options
 }
 
