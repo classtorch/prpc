@@ -69,7 +69,7 @@ func Test_NewClientConn(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	err = client.Invoke(ctx, "GET", "/getUserList", nil, nil, WithUrlParam("/123"))
+	err = client.Invoke(ctx, "GET", "/users/{uid}", nil, nil, WithUrlParams(map[string]string{"uid": "123"}))
 	if err != nil {
 		t.Error(err)
 	}

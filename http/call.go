@@ -2,10 +2,17 @@ package http
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
+)
+
+var (
+	variableUrlRex = regexp.MustCompile(`{(.*?)}`)
 )
 
 type CallOption func(callOption *callOption)
@@ -22,16 +29,16 @@ func WithCallTimeOut(value int) CallOption {
 	}
 }
 
-func WithUrlParam(value string) CallOption {
+func WithUrlParams(value map[string]string) CallOption {
 	return func(callOption *callOption) {
-		callOption.UrlParam = value
+		callOption.UrlParams = value
 	}
 }
 
 type callOption struct {
-	Header   map[string]string
-	TimeOut  time.Duration
-	UrlParam string // url param,if raw url is /users,url param='/123',then latest url is /users/123. the url param can be multiple，such as /123/001
+	Header    map[string]string
+	TimeOut   time.Duration
+	UrlParams map[string]string // url params,if raw url is /users/{uid},url params=map{"uid":123},then latest url is /users/123.
 }
 
 type CallOptions []CallOption
@@ -54,8 +61,8 @@ func (opts CallOptions) CombineHeader(header map[string]string) []CallOption {
 	if callOpt.TimeOut != 0 {
 		options = append(options, WithCallTimeOut(int(callOpt.TimeOut/time.Second)))
 	}
-	if len(callOpt.UrlParam) > 0 {
-		options = append(options, WithUrlParam(callOpt.UrlParam))
+	if len(callOpt.UrlParams) > 0 {
+		options = append(options, WithUrlParams(callOpt.UrlParams))
 	}
 	return options
 }
@@ -79,12 +86,23 @@ func (opts CallOptions) GetHeader() map[string]string {
 	return callOpt.Header
 }
 
-func (opts CallOptions) GetUrlParam() string {
+func (opts CallOptions) GetUrlParam() map[string]string {
 	callOpt := &callOption{}
 	for _, opt := range opts {
 		opt(callOpt)
 	}
-	return callOpt.UrlParam
+	return callOpt.UrlParams
+}
+
+func getVariableUrlParams(url string) []string {
+	params := variableUrlRex.FindAllString(url, -1)
+	results := make([]string, len(params))
+	for idx, temp := range params {
+		result := strings.ReplaceAll(temp, "{", "")
+		result = strings.ReplaceAll(result, "}", "")
+		results[idx] = result
+	}
+	return results
 }
 
 func (cc *ClientConn) Invoke(ctx context.Context, method string, api string, req interface{}, reply interface{}, opts ...CallOption) error {
@@ -109,10 +127,37 @@ func (cc *ClientConn) Invoke(ctx context.Context, method string, api string, req
 		return cc.GetOption().unaryInterceptor(ctx, req, reply, request, &http.Response{}, cc, invoke, opts...)
 	}
 	return invoke(ctx, req, reply, request, &http.Response{}, cc, opts...)
-
 }
 
-// 整合clientConn和CallOption中的TimeOut值,如果CallOption没有配置，则取clientConn中的
+func invoke(ctx context.Context, req interface{}, reply interface{}, httpRequest *http.Request, httpResponse *http.Response, cc *ClientConn, opts ...CallOption) error {
+	call := cc.GetOption().httpCall
+	addr := httpRequest.Host
+	api := httpRequest.URL.Path
+	method := strings.ToUpper(httpRequest.Method)
+	opts = combineCallOptions(cc, opts...)
+
+	urlParam := CallOptions(opts).GetUrlParam()
+	var err error
+	api, err = convertApi(api, urlParam)
+	if err != nil {
+		return err
+	}
+	switch method {
+	case http.MethodGet:
+		httpRequest, httpResponse, err = call.Get(ctx, addr, api, req, reply, opts...)
+	case http.MethodPost:
+		httpRequest, httpResponse, err = call.Post(ctx, addr, api, req, reply, opts...)
+	case http.MethodPut:
+		httpRequest, httpResponse, err = call.Put(ctx, addr, api, req, reply, opts...)
+	case http.MethodDelete:
+		httpRequest, httpResponse, err = call.Delete(ctx, addr, api, req, reply, opts...)
+	default:
+		httpRequest, httpResponse, err = call.Default(ctx, addr, api, req, reply, opts...)
+	}
+	return err
+}
+
+// combineCallOptions integrate the TimeOut value in clientConn and CallOption, if CallOption is not configured, take the value in clientConn
 func combineCallOptions(cc *ClientConn, option ...CallOption) []CallOption {
 	callOpt := &callOption{}
 	for _, opt := range option {
@@ -128,36 +173,32 @@ func combineCallOptions(cc *ClientConn, option ...CallOption) []CallOption {
 	if callOpt.TimeOut != 0 {
 		options = append(options, WithCallTimeOut(int(callOpt.TimeOut/time.Second)))
 	}
-	if len(callOpt.UrlParam) > 0 {
-		options = append(options, WithUrlParam(callOpt.UrlParam))
+	if len(callOpt.UrlParams) > 0 {
+		options = append(options, WithUrlParams(callOpt.UrlParams))
 	}
 	return options
 }
 
-func invoke(ctx context.Context, req interface{}, reply interface{}, httpRequest *http.Request, httpResponse *http.Response, cc *ClientConn, opts ...CallOption) error {
-	call := cc.GetOption().httpCall
-	addr := httpRequest.Host
-	api := httpRequest.URL.Path
-	method := strings.ToUpper(httpRequest.Method)
-	opts = combineCallOptions(cc, opts...)
-
-	urlParam := CallOptions(opts).GetUrlParam()
-	if len(urlParam) > 0 {
-		api = api + urlParam
+// convertApi Convert the variable parameter variable in the api address to a value
+func convertApi(oldApi string, urlParam map[string]string) (string, error) {
+	variableParams := getVariableUrlParams(oldApi)
+	variableParamMap := make(map[string]string)
+	newApi := oldApi
+	if len(variableParams) == 0 {
+		return newApi, nil
 	}
-
-	var err error
-	switch method {
-	case http.MethodGet:
-		httpRequest, httpResponse, err = call.Get(ctx, addr, api, req, reply, opts...)
-	case http.MethodPost:
-		httpRequest, httpResponse, err = call.Post(ctx, addr, api, req, reply, opts...)
-	case http.MethodPut:
-		httpRequest, httpResponse, err = call.Put(ctx, addr, api, req, reply, opts...)
-	case http.MethodDelete:
-		httpRequest, httpResponse, err = call.Delete(ctx, addr, api, req, reply, opts...)
-	default:
-		httpRequest, httpResponse, err = call.Default(ctx, addr, api, req, reply, opts...)
+	for _, key := range variableParams {
+		paramVal, ok := urlParam[key]
+		if !ok {
+			return "", errors.New(fmt.Sprintf("variable url param key:%s not exist", key))
+		}
+		if len(paramVal) == 0 {
+			return "", errors.New(fmt.Sprintf("variable url param key:%s's value can not empty", key))
+		}
+		variableParamMap[key] = paramVal
 	}
-	return err
+	for key, value := range variableParamMap {
+		newApi = strings.ReplaceAll(newApi, fmt.Sprintf("{%s}", key), value)
+	}
+	return newApi, nil
 }
