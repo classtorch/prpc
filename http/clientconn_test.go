@@ -137,5 +137,4 @@ func Test_NewClientConn(t *testing.T) {
 			t.Error(err)
 		}
 	}
-
 }
