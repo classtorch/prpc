@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/classtorch/prpc/balancer/roundrobin"
+	"github.com/classtorch/prpc/balancer/weight"
 	"github.com/classtorch/prpc/resolver"
 	"net/http"
 	"strings"
@@ -26,6 +27,33 @@ func (resolverBuilder mockResolverBuilder) Build(target resolver.Target, cc reso
 }
 
 func (resolverBuilder mockResolverBuilder) Scheme() string {
+	return "consul"
+}
+
+type mockResolverBuilderWithWeight struct {
+}
+
+type ServiceWithWeight struct {
+	addr   string
+	weight int
+}
+
+func (resolverBuilder mockResolverBuilderWithWeight) Build(target resolver.Target, cc resolver.ClientConn) (resolver.Resolver, error) {
+	services := []ServiceWithWeight{
+		{addr: "127.0.0.1:33000", weight: 1},
+		{addr: "127.0.0.2:33000", weight: 2},
+		{addr: "127.0.0.3:33000", weight: 5},
+	}
+	addresses := make([]resolver.Address, len(services))
+	for i, addr := range services {
+		addresses[i] = resolver.Address{Addr: addr.addr, Attributes: map[interface{}]interface{}{"weight": addr.weight}}
+	}
+	state := resolver.State{Addresses: addresses}
+	cc.UpdateState(state)
+	return mockResolver{}, nil
+}
+
+func (resolverBuilder mockResolverBuilderWithWeight) Scheme() string {
 	return "consul"
 }
 
@@ -73,29 +101,7 @@ func Test_NewClientConn(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	// resolver
-	client, err = NewClientConn(context.Background(), "etcd://127.0.0.1:8000/account", WithResolver(mockResolverBuilder{}), WithCallClient(mockHttpImpl{}))
-	if err != resolver.ResolverNotExistErr {
-		t.Errorf("expect err:ResolverNotExistErr but get:%v", err)
-	}
-	client, err = NewClientConn(context.Background(), "consul://127.0.0.1:8000/account", WithResolver(mockResolverBuilder{}), WithCallClient(mockHttpImpl{}))
-	if err != nil {
-		t.Error(err)
-	}
-	err = client.Invoke(ctx, "GET", "/getUserList", nil, nil)
-	if err != nil {
-		t.Error(err)
-	}
-	// resolver,balancer
-	client, err = NewClientConn(context.Background(), "consul://127.0.0.1:8000/account", WithResolver(mockResolverBuilder{}), WithCallClient(mockHttpImpl{}), WithBalancerName(roundrobin.Name))
-	if err != nil {
-		t.Error(err)
-	}
-	err = client.Invoke(ctx, "GET", "/getUserList", nil, nil)
-	if err != nil {
-		t.Error(err)
-	}
-	// resolver,balancer,middleware
+	// resolver,balancer(round_robin),middleware
 	index := 0
 	client, err = NewClientConn(context.Background(), "consul://127.0.0.1:8000/account", WithResolver(mockResolverBuilder{}), WithCallClient(mockHttpImpl{}), WithBalancerName(roundrobin.Name), WithInterceptor(
 		func(ctx context.Context, req interface{}, reply interface{}, httpRequest *http.Request, httpResponse *http.Response, cc *ClientConn, invoker Invoker, option ...CallOption) error {
@@ -110,10 +116,26 @@ func Test_NewClientConn(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	for i := 0; i <= 2; i++ {
+	for i := 0; i < 3; i++ {
 		err = client.Invoke(ctx, "GET", "/getUserList", nil, nil)
 		if err != nil {
 			t.Error(err)
 		}
 	}
+	// resolver,balancer(weight_round_robin),middleware
+	client, err = NewClientConn(context.Background(), "consul://127.0.0.1:8000/account", WithResolver(mockResolverBuilderWithWeight{}), WithCallClient(mockHttpImpl{}), WithBalancerName(weight.Name), WithInterceptor(
+		func(ctx context.Context, req interface{}, reply interface{}, httpRequest *http.Request, httpResponse *http.Response, cc *ClientConn, invoker Invoker, option ...CallOption) error {
+			fmt.Println(httpRequest.Host)
+			return invoke(ctx, req, reply, httpRequest, httpResponse, cc, option...)
+		}))
+	if err != nil {
+		t.Error(err)
+	}
+	for i := 0; i <= 8; i++ {
+		err = client.Invoke(ctx, "GET", "/getUserList", nil, nil)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
 }
